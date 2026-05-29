@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buscaminas PRO FINAL_REV_JAURE_PK</title>
+
+<style>
+body{
+    font-family: Arial, sans-serif;
+    text-align:center;
+    background:#1e1e2f;
+    color:white;
+    margin:0;
+    padding:20px;
+}
+
+h1{
+    margin-bottom:10px;
+}
+
+#panel{
+    margin-bottom:15px;
+}
+
+button, select{
+    margin:5px;
+    padding:10px 14px;
+    border:none;
+    border-radius:6px;
+    background:#00c9a7;
+    color:white;
+    font-weight:bold;
+    cursor:pointer;
+    font-size:14px;
+}
+
+button:hover,
+select:hover{
+    background:#00a58a;
+}
+
+#tablero{
+    display:grid;
+    justify-content:center;
+    gap:3px;
+    margin-top:15px;
+}
+
+.celda{
+    width:40px;
+    height:40px;
+    background:#bdbdbd;
+    border:1px solid #888;
+    font-size:18px;
+    font-weight:bold;
+    cursor:pointer;
+    user-select:none;
+}
+
+.celda:hover{
+    background:#a9a9a9;
+}
+
+.revelada{
+    background:#e6e6e6;
+    cursor:default;
+}
+
+.mina{
+    background:#ff4d4d;
+    color:white;
+}
+
+/* colores clásicos */
+.n1{ color:blue; }
+.n2{ color:green; }
+.n3{ color:red; }
+.n4{ color:navy; }
+.n5{ color:brown; }
+.n6{ color:teal; }
+.n7{ color:black; }
+.n8{ color:gray; }
+
+#mensaje{
+    margin-top:10px;
+    font-size:20px;
+    font-weight:bold;
+}
+
+@media(max-width:700px){
+    .celda{
+        width:32px;
+        height:32px;
+        font-size:15px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<h1>💣 Buscaminas PRO FINAL_REV_JAURE_PK</h1>
+
+<div id="panel">
+    <h2>⏱️ Tiempo: <span id="tiempo">00:00</span></h2>
+    <h3>🏆 Mejor tiempo: <span id="mejor">--:--</span></h3>
+
+    <select id="dificultad" onchange="cambiarDificultad()">
+        <option value="facil">Fácil</option>
+        <option value="medio">Medio</option>
+        <option value="dificil">Difícil</option>
+    </select>
+
+    <button onclick="togglePausa()">⏸️ Pausa</button>
+    <button onclick="reiniciarJuego()">🔄 Reiniciar</button>
+</div>
+
+<div id="mensaje"></div>
+
+<div id="tablero"></div>
+
+<!-- sonido perder -->
+<audio id="sonidoPerder"
+src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-retro-game-over-213.wav">
+</audio>
+
+<!-- sonido ganar -->
+<audio id="sonidoGanar"
+src="https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-2015.wav">
+</audio>
+
+<script>
+
+let filas, columnas, minas;
+let tablero = [];
+let juegoTerminado = false;
+
+let tiempo = 0;
+let intervalo = null;
+let iniciado = false;
+let pausado = false;
+
+let mejorTiempo;
+
+// ======================
+// DIFICULTAD
+// ======================
+
+function setDificultad(nivel){
+
+    if(nivel === "facil"){
+        filas = 8;
+        columnas = 8;
+        minas = 10;
+    }
+    else if(nivel === "medio"){
+        filas = 12;
+        columnas = 12;
+        minas = 25;
+    }
+    else{
+        filas = 16;
+        columnas = 16;
+        minas = 40;
+    }
+
+    document.getElementById("tablero").style.gridTemplateColumns =
+    `repeat(${columnas}, 40px)`;
+
+    mejorTiempo = localStorage.getItem("mejor_" + nivel);
+
+    document.getElementById("mejor").textContent =
+    mejorTiempo ? formatearTiempo(mejorTiempo) : "--:--";
+}
+
+function cambiarDificultad(){
+    setDificultad(document.getElementById("dificultad").value);
+    reiniciarJuego();
+}
+
+// ======================
+// TIEMPO
+// ======================
+
+function formatearTiempo(seg){
+
+    seg = parseInt(seg);
+
+    let m = Math.floor(seg / 60);
+    let s = seg % 60;
+
+    return (m < 10 ? "0" : "") + m + ":" +
+           (s < 10 ? "0" : "") + s;
+}
+
+function iniciarCronometro(){
+
+    if(intervalo) return;
+
+    intervalo = setInterval(() => {
+
+        tiempo++;
+
+        document.getElementById("tiempo").textContent =
+        formatearTiempo(tiempo);
+
+    },1000);
+}
+
+function detenerCronometro(){
+    clearInterval(intervalo);
+    intervalo = null;
+}
+
+function togglePausa(){
+
+    if(juegoTerminado) return;
+
+    if(pausado){
+        iniciarCronometro();
+    }
+    else{
+        detenerCronometro();
+    }
+
+    pausado = !pausado;
+}
+
+// ======================
+// REINICIAR
+// ======================
+
+function reiniciarJuego(){
+
+    detenerCronometro();
+
+    tiempo = 0;
+    iniciado = false;
+    pausado = false;
+    juegoTerminado = false;
+
+    document.getElementById("tiempo").textContent = "00:00";
+    document.getElementById("mensaje").textContent = "";
+
+    crearTablero();
+}
+
+// ======================
+// CREAR TABLERO
+// ======================
+
+function crearTablero(){
+
+    tablero = [];
+
+    for(let i=0;i<filas;i++){
+
+        tablero[i] = [];
+
+        for(let j=0;j<columnas;j++){
+
+            tablero[i][j] = {
+                mina:false,
+                revelada:false,
+                numero:0,
+                bandera:false
+            };
+        }
+    }
+
+    let colocadas = 0;
+
+    while(colocadas < minas){
+
+        let x = Math.floor(Math.random() * filas);
+        let y = Math.floor(Math.random() * columnas);
+
+        if(!tablero[x][y].mina){
+
+            tablero[x][y].mina = true;
+            colocadas++;
+        }
+    }
+
+    for(let i=0;i<filas;i++){
+
+        for(let j=0;j<columnas;j++){
+
+            if(!tablero[i][j].mina){
+
+                let total = 0;
+
+                for(let x=-1;x<=1;x++){
+
+                    for(let y=-1;y<=1;y++){
+
+                        let ni = i + x;
+                        let nj = j + y;
+
+                        if(
+                            ni >= 0 &&
+                            ni < filas &&
+                            nj >= 0 &&
+                            nj < columnas
+                        ){
+                            if(tablero[ni][nj].mina){
+                                total++;
+                            }
+                        }
+                    }
+                }
+
+                tablero[i][j].numero = total;
+            }
+        }
+    }
+
+    dibujar();
+}
+
+// ======================
+// DIBUJAR
+// ======================
+
+function dibujar(){
+
+    const cont = document.getElementById("tablero");
+
+    cont.innerHTML = "";
+
+    for(let i=0;i<filas;i++){
+
+        for(let j=0;j<columnas;j++){
+
+            const btn = document.createElement("button");
+
+            btn.classList.add("celda");
+
+            if(tablero[i][j].revelada){
+
+                btn.classList.add("revelada");
+
+                if(tablero[i][j].mina){
+
+                    btn.classList.add("mina");
+                    btn.textContent = "💣";
+                }
+                else if(tablero[i][j].numero > 0){
+
+                    btn.textContent = tablero[i][j].numero;
+
+                    btn.classList.add(
+                        "n" + tablero[i][j].numero
+                    );
+                }
+            }
+            else if(tablero[i][j].bandera){
+
+                btn.textContent = "🚩";
+            }
+
+            btn.onclick = () => clickCelda(i,j);
+
+            btn.oncontextmenu = (e) => {
+
+                e.preventDefault();
+
+                ponerBandera(i,j);
+            };
+
+            cont.appendChild(btn);
+        }
+    }
+}
+
+// ======================
+// BANDERAS
+// ======================
+
+function ponerBandera(i,j){
+
+    if(
+        juegoTerminado ||
+        tablero[i][j].revelada
+    ) return;
+
+    tablero[i][j].bandera =
+    !tablero[i][j].bandera;
+
+    dibujar();
+}
+
+// ======================
+// CLICK
+// ======================
+
+function clickCelda(i,j){
+
+    if(
+        juegoTerminado ||
+        tablero[i][j].revelada ||
+        tablero[i][j].bandera ||
+        pausado
+    ) return;
+
+    if(!iniciado){
+
+        iniciarCronometro();
+        iniciado = true;
+    }
+
+    tablero[i][j].revelada = true;
+
+    // perder
+    if(tablero[i][j].mina){
+
+        detenerCronometro();
+
+        document.getElementById("mensaje")
+        .textContent = "💥 Perdiste";
+
+        document.getElementById("sonidoPerder").play();
+
+        juegoTerminado = true;
+
+        revelarTodo();
+
+        return;
+    }
+
+    // expansión automática
+    if(tablero[i][j].numero === 0){
+
+        for(let x=-1;x<=1;x++){
+
+            for(let y=-1;y<=1;y++){
+
+                let ni = i + x;
+                let nj = j + y;
+
+                if(
+                    ni >= 0 &&
+                    ni < filas &&
+                    nj >= 0 &&
+                    nj < columnas
+                ){
+                    clickCelda(ni,nj);
+                }
+            }
+        }
+    }
+
+    verificarVictoria();
+
+    dibujar();
+}
+
+// ======================
+// VICTORIA
+// ======================
+
+function verificarVictoria(){
+
+    let seguras = filas * columnas - minas;
+    let reveladas = 0;
+
+    for(let i=0;i<filas;i++){
+
+        for(let j=0;j<columnas;j++){
+
+            if(
+                !tablero[i][j].mina &&
+                tablero[i][j].revelada
+            ){
+                reveladas++;
+            }
+        }
+    }
+
+    if(reveladas === seguras){
+
+        detenerCronometro();
+
+        juegoTerminado = true;
+
+        document.getElementById("mensaje")
+        .textContent = "🏆 ¡Ganaste!";
+
+        document.getElementById("sonidoGanar").play();
+
+        let nivel =
+        document.getElementById("dificultad").value;
+
+        let key = "mejor_" + nivel;
+
+        if(
+            !localStorage.getItem(key) ||
+            tiempo < localStorage.getItem(key)
+        ){
+
+            localStorage.setItem(key, tiempo);
+
+            document.getElementById("mejor")
+            .textContent = formatearTiempo(tiempo);
+        }
+    }
+}
+
+// ======================
+// REVELAR TODO
+// ======================
+
+function revelarTodo(){
+
+    for(let i=0;i<filas;i++){
+
+        for(let j=0;j<columnas;j++){
+
+            tablero[i][j].revelada = true;
+        }
+    }
+
+    dibujar();
+}
+
+// ======================
+// INICIAR
+// ======================
+
+setDificultad("facil");
+crearTablero();
+
+</script>
+
+</body>
+</html>
